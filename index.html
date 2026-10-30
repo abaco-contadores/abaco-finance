@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ábaco Finance</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="apple-touch-icon" href="icon-192.png"><meta name="theme-color" content="#0A0A0A">
+<title>Ábaco Finance</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" type="image/png" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="theme-color" content="#0A0A0A">
 <style>
 :root{--bg:#0A0A0A;--c1:#141414;--c2:#1c1c1c;--gold:#C2A97F;--gr:#D9D9D9;--mut:#8d8a84;--ok:#8fb996;--bad:#d98b7a;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -60,7 +60,7 @@ async function load(){
   const oi=new Set(obs.map(o=>o.id));
   const pays=py.filter(x=>oi.has(x.obligation_id)).sort((a,b)=>a.paid_on<b.paid_on?-1:1).map(x=>({id:x.id,oid:x.obligation_id,date:x.paid_on,amt:c100(x.amount),method:x.method||'',ref:x.reference||'',void:!!x.voided_at}));
   return{parties:ps.map(p=>({id:p.id,name:p.name,phone:p.phone||'',archived:!!p.archived_at})),obs,pays}};
- db={cobrar:mk('cobrar'),pagar:mk('pagar'),fin:fi.map(f=>({id:f.id,entity:f.lender,concept:f.concept,initial:c100(f.down_payment),
+ db={cobrar:mk('cobrar'),pagar:mk('pagar'),fin:fi.map(f=>({id:f.id,entity:f.lender,concept:f.concept,initial:c100(f.down_payment),void:!!f.voided_at,
   quotas:qu.filter(x=>x.financing_id==f.id).sort((a,b)=>a.number-b.number).map(x=>({id:x.id,n:x.number,amt:c100(x.amount),due:x.due_date||'',
    pays:qp.filter(y=>y.installment_id==x.id).map(y=>({id:y.id,date:y.paid_on||'',amt:c100(y.amount),method:y.method||'',ref:y.reference||'',hist:y.is_historical,void:!!y.voided_at}))}))}))};
  return true}
@@ -84,7 +84,7 @@ function render(){if(!me||!db)return;$nav.innerHTML=nav.map(n=>`<button class="$
  $m.innerHTML=S.tab=='home'?home():S.tab=='fin'?(S.fid?finView(S.fid):finList()):(S.pid?partyView():list())}
 function home(){const sum=k=>db[k].parties.filter(p=>!p.archived).map(p=>party(k,p)).reduce((a,p)=>a+p.bal,0);
  const mo=TODAY.slice(0,7),inM=a=>a.filter(p=>!p.void&&(p.date||'').startsWith(mo)).reduce((s,p)=>s+p.amt,0);
- const fs=db.fin.map(fin),fb=fs.reduce((a,f)=>a+f.bal,0),fm=db.fin.reduce((a,f)=>a+f.quotas.reduce((s,x)=>s+inM(x.pays),0),0);
+ const af=db.fin.filter(f=>!f.void),fs=af.map(fin),fb=fs.reduce((a,f)=>a+f.bal,0),fm=af.reduce((a,f)=>a+f.quotas.reduce((s,x)=>s+inM(x.pays),0),0);
  const cx=sum('cobrar'),cp=sum('pagar');
  const venc=['cobrar','pagar'].flatMap(k=>db[k].obs.map(o=>ob(k,o)).filter(o=>o.s=='Vencida'));
  const empty=!db.cobrar.obs.length&&!db.pagar.obs.length;
@@ -140,18 +140,40 @@ function stmt(k){const p=party(k,db[k].parties.find(x=>x.id==S.pid));const d=doc
 <tr><th>TOTAL</th><th>${fmt(p.t)}</th><th>${fmt(p.pd)}</th><th>${fmt(p.bal)}</th></tr></table>
 <h3 style="margin-top:18px">Movimientos</h3><table>${p.os.flatMap(o=>o.ps.filter(x=>!x.void).map(x=>`<tr><td>${x.date}</td><td>${esc(o.concept)} · ${esc(x.method||'')} ${esc(x.ref||'')}</td><td>${fmt(x.amt)}</td></tr>`)).join('')||'<tr><td>Sin movimientos</td></tr>'}</table>
 <h1 style="margin-top:22px;color:#C2A97F">${k=='cobrar'?'Pendiente de cobro':'Pendiente de pago'}: ${fmt(p.bal)}</h1>`;document.body.append(d)}
-function finList(){return`<h1>Financiamientos</h1>${db.fin.map(fin).map(f=>`<div class="card click" onclick="go('fin','${f.id}')"><div class="row"><b>${esc(f.entity)} · ${esc(f.concept)}</b><span class="n gold">${fmt(f.bal)}</span></div><div class="bar"><i style="width:${f.pct}%"></i></div><div class="k">${f.pct}% por importe · ${f.done}/${f.q.length} cuotas pagadas</div></div>`).join('')}`}
+const addM=(d,i)=>{const [y,m,dd]=d.split('-').map(Number);return new Date(Date.UTC(y,m-1+i,dd)).toISOString().slice(0,10)};
+const qOf=id=>{for(const f of db.fin){const x=f.quotas.find(z=>z.id==id);if(x)return{f,x}}};
+function finList(){return`<div class="row"><h1>Financiamientos</h1><button class="b" onclick="newFin()">Nuevo</button></div>${db.fin.map(fin).map(f=>`<div class="card click" onclick="go('fin','${f.id}')"><div class="row"><b style="${f.void?'text-decoration:line-through;opacity:.5':''}">${esc(f.entity)} · ${esc(f.concept)}</b><span class="n ${f.void?'':'gold'}">${f.void?'Anulado':fmt(f.bal)}</span></div><div class="bar"><i style="width:${f.pct}%"></i></div><div class="k">${f.pct}% por importe · ${f.done}/${f.q.length} cuotas pagadas</div></div>`).join('')||'<div class="card k">Sin financiamientos. Pulsa «Nuevo».</div>'}`}
 function finView(id){const raw=db.fin.find(x=>x.id==id),f=fin(raw),init=raw.initial;
- return`<button class="g s" onclick="go('fin')">‹ Volver</button><h1 style="margin-top:10px">${esc(f.entity)}</h1><div class="k">${esc(f.concept)}</div>
+ return`<button class="g s" onclick="go('fin')">‹ Volver</button><h1 style="margin-top:10px">${esc(f.entity)}${f.void?' (anulado)':''}</h1><div class="k">${esc(f.concept)}</div>
 <div class="grid"><div class="card"><div class="k">Inicial (aparte)</div><div class="n">${fmt(init)}</div></div><div class="card"><div class="k">Total cuotas</div><div class="n">${fmt(f.t)}</div></div>
 <div class="card"><div class="k">Pagado en cuotas</div><div class="n ok">${fmt(f.pd)}</div></div><div class="card"><div class="k">Saldo de cuotas</div><div class="n gold">${fmt(f.bal)}</div></div></div>
 <div class="card"><div class="bar"><i style="width:${f.pct}%"></i></div><div class="k">${f.pct}% por importe · ${f.done} de ${f.q.length} cuotas completas · Compra total ${fmt(init+f.t)} · Pagado con inicial ${fmt(init+f.pd)}</div></div>
-<div class="acts"><button class="g" onclick="setStart('${id}')">Definir primer vencimiento</button></div>
+<div class="acts"><button class="g" onclick="editFin('${id}')">Editar</button><button class="g" onclick="addQ('${id}')">Agregar cuota</button><button class="g" onclick="setStart('${id}')">Definir primer vencimiento</button><button class="g" onclick="voidFin('${id}')">${f.void?'Restaurar':'Anular'}</button><button class="g" onclick="delFin('${id}')">Eliminar</button></div>
 ${f.q.map(x=>`<div class="card"><div class="row"><b>Cuota ${String(x.n).padStart(2,'0')}/${f.q.length}</b><span class="tag ${cls(x.s)}">${x.s}</span></div><div class="row"><span class="k">${x.due?'Vence '+x.due:'Sin fecha'} · ${fmt(x.amt)}</span><span class="n">${fmt(x.bal)}</span></div>
-${x.bal>0?`<div class="acts"><button class="b s" onclick="payQ('${id}',${x.n})">Pagar cuota</button></div>`:''}</div>`).join('')}`}
-function payQ(id,n){const x=fin(db.fin.find(z=>z.id==id)).q[n-1];form('Cuota '+n+' (saldo '+fmt(x.bal)+')',[imp,payF,mF,rF],o=>{const c=cents(o.amt);return chk(c,x.bal)||q(sb.from('installment_payments').insert({installment_id:x.id,paid_on:o.date,amount:c/100,method:o.method||null,reference:o.ref||null}))})}
-function setStart(id){const f=db.fin.find(x=>x.id==id);form('Primer vencimiento (Rapicredit paga el 27)',[['d','Fecha de la primera cuota','date','required']],async o=>{const [y,m,dd]=o.d.split('-').map(Number);
- const rs=await Promise.all(f.quotas.map((x,i)=>sb.from('installments').update({due_date:new Date(Date.UTC(y,m-1+i,dd)).toISOString().slice(0,10)}).eq('id',x.id)));const b=rs.find(r=>r.error);return b?b.error.message:null})}
+<div class="acts">${x.bal>0?`<button class="b s" onclick="payQ('${x.id}')">Pagar cuota</button>`:''}<button class="g s" onclick="editQ('${x.id}')">Editar</button><button class="g s" onclick="delQ('${x.id}')">Eliminar</button></div>
+${x.pays.length?`<table>${x.pays.map(p=>`<tr style="${p.void?'opacity:.4;text-decoration:line-through':''}"><td>${p.date||'sin fecha'}</td><td>${esc(p.method)} ${esc(p.ref)}</td><td>${fmt(p.amt)}</td><td>${p.void?'':`<button class="g s" onclick="voidQP('${p.id}')">Anular</button>`}</td></tr>`).join('')}</table>`:''}</div>`).join('')}`}
+function newFin(){form('Nuevo financiamiento',[['lender','Entidad acreedora','text','required'],['concept','Concepto','text','required'],['down','Inicial pagada (USD, opcional)','number','step="0.01" min="0" inputmode="decimal"','0'],['n','Número de cuotas','number','min="1" max="120" required','12'],['amt','Importe por cuota (USD)','number','step="0.01" min="0.01" required inputmode="decimal"'],['d','Primer vencimiento (opcional)','date']],async o=>{
+ const n=parseInt(o.n),c=cents(o.amt),dn=o.down?cents(o.down):0;if(!(n>=1))return'Número de cuotas inválido.';if(!(c>0))return'El importe de la cuota debe ser mayor que cero.';if(!(dn>=0))return'La inicial no es válida.';
+ const r=await sb.from('financings').insert({lender:o.lender.trim(),concept:o.concept.trim(),down_payment:dn/100}).select().single();if(r.error)return r.error.message;
+ const e=await q(sb.from('installments').insert(Array.from({length:n},(_,i)=>({financing_id:r.data.id,number:i+1,amount:c/100,due_date:o.d?addM(o.d,i):null}))));
+ if(e)await sb.from('financings').delete().eq('id',r.data.id);return e})}
+function editFin(id){const f=db.fin.find(x=>x.id==id);form('Editar financiamiento',[['lender','Entidad acreedora','text','required',f.entity],['concept','Concepto','text','required',f.concept],['down','Inicial pagada (USD)','number','step="0.01" min="0" inputmode="decimal"',(f.initial/100).toFixed(2)]],o=>{const dn=cents(o.down||0);if(!(dn>=0))return'La inicial no es válida.';return q(sb.from('financings').update({lender:o.lender.trim(),concept:o.concept.trim(),down_payment:dn/100}).eq('id',id))})}
+function voidFin(id){const f=db.fin.find(x=>x.id==id);form(f.void?'¿Restaurar este financiamiento?':'¿Anular "'+esc(f.entity)+'"? Se conserva el historial pero deja de sumar a los saldos.',[],()=>q(sb.from('financings').update({voided_at:f.void?null:now()}).eq('id',id)))}
+function delFin(id){const f=db.fin.find(x=>x.id==id),real=f.quotas.some(x=>x.pays.some(p=>!p.hist));
+ form('¿Eliminar "'+esc(f.entity)+'" con sus '+f.quotas.length+' cuotas? No se puede deshacer.',[],async()=>{
+  if(real)return'Tiene pagos registrados por ti. Para no perder el historial, usa «Anular» en vez de eliminar.';
+  const ids=f.quotas.map(x=>x.id);let e=null;if(ids.length){e=await q(sb.from('installment_payments').delete().in('installment_id',ids));if(!e)e=await q(sb.from('installments').delete().eq('financing_id',id))}
+  if(!e)e=await q(sb.from('financings').delete().eq('id',id));if(!e)S.fid=null;return e})}
+function addQ(fid){const f=db.fin.find(x=>x.id==fid);form('Agregar cuota',[['amt','Importe (USD)','number','step="0.01" min="0.01" required inputmode="decimal"'],['due','Vencimiento (opcional)','date']],o=>{const c=cents(o.amt);if(!(c>0))return'El importe debe ser mayor que cero.';return q(sb.from('installments').insert({financing_id:fid,number:Math.max(0,...f.quotas.map(x=>x.n))+1,amount:c/100,due_date:o.due||null}))})}
+function editQ(id){const {x}=qOf(id),pd=paid(x.pays);form('Editar cuota '+x.n,[['amt','Importe (USD)','number','step="0.01" min="0.01" required inputmode="decimal"',(x.amt/100).toFixed(2)],['due','Vencimiento (opcional)','date','',x.due]],o=>{const c=cents(o.amt);if(!(c>0))return'El importe debe ser mayor que cero.';if(c<pd)return'El importe no puede ser menor a lo ya pagado ('+fmt(pd)+').';return q(sb.from('installments').update({amount:c/100,due_date:o.due||null}).eq('id',id))})}
+function delQ(id){const {f,x}=qOf(id);form('¿Eliminar la cuota '+x.n+'?'+(x.pays.length?' Se borrará también su pago histórico cargado al inicio.':'')+' Las siguientes se renumeran.',[],async()=>{
+ if(x.pays.some(p=>!p.hist))return'Tiene pagos registrados por ti. Anula el pago o edita la cuota en vez de eliminarla.';
+ let e=x.pays.length?await q(sb.from('installment_payments').delete().eq('installment_id',id)):null;if(!e)e=await q(sb.from('installments').delete().eq('id',id));if(e)return e;
+ for(const z of f.quotas.filter(z=>z.n>x.n).sort((a,b)=>a.n-b.n)){e=await q(sb.from('installments').update({number:z.n-1}).eq('id',z.id));if(e)return e}return null})}
+function payQ(qid){const {x}=qOf(qid),bal=x.amt-paid(x.pays);form('Cuota '+x.n+' (saldo '+fmt(bal)+')',[imp,payF,mF,rF],o=>{const c=cents(o.amt);return chk(c,bal)||q(sb.from('installment_payments').insert({installment_id:qid,paid_on:o.date,amount:c/100,method:o.method||null,reference:o.ref||null}))})}
+function voidQP(pid){form('¿Anular este pago? Queda tachado en el historial y la cuota vuelve a tener saldo.',[['why','Motivo (opcional)']],o=>q(sb.from('installment_payments').update({voided_at:now(),void_reason:o.why.trim()||'Sin motivo indicado'}).eq('id',pid)))}
+function setStart(id){const f=db.fin.find(x=>x.id==id);form('Primer vencimiento (Rapicredit paga el 27)',[['d','Fecha de la primera cuota','date','required']],async o=>{
+ const rs=await Promise.all(f.quotas.map((x,i)=>sb.from('installments').update({due_date:addM(o.d,i)}).eq('id',x.id)));const b=rs.find(r=>r.error);return b?b.error.message:null})}
 function loginView(msg){$nav.innerHTML='';$m.innerHTML=`<h1>Ábaco Finance</h1><p class="k">Inicia sesión para ver tus datos en cualquier dispositivo.</p><div class="card"><label>Correo<input id="em" type="email" autocomplete="email"></label><label>Contraseña (mínimo 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label><p class="bad" id="lm">${msg||''}</p><div class="acts"><button class="b" onclick="auth('in')">Entrar</button><button class="g" onclick="auth('up')">Crear cuenta</button></div></div>`}
 async function auth(m){const email=g('em').value.trim(),password=g('pw').value;g('lm').textContent='Un momento…';
  const r=m=='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});
