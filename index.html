@@ -162,4 +162,5 @@ async function start(){$m.innerHTML='<p class="k">Cargando…</p>';if(await load
 async function logout(){await sb.auth.signOut();me=null;db=null;loginView()}
 sb.auth.getSession().then(({data})=>{if(data.session){me=data.session.user;start()}else loginView()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me)load().then(ok=>ok&&!document.querySelector('dialog[open]')&&render())});
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script></body></html>
