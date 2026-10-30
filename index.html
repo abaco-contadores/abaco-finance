@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ábaco Finance</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="apple-touch-icon" href="icon-192.png"><meta name="theme-color" content="#0A0A0A">
+<style>
+:root{--bg:#0A0A0A;--c1:#141414;--c2:#1c1c1c;--gold:#C2A97F;--gr:#D9D9D9;--mut:#8d8a84;--ok:#8fb996;--bad:#d98b7a;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--gr);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3,.n{font-family:"Iowan Old Style",Georgia,serif;font-weight:600;color:#fff;margin:0}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c1);border-top:1px solid #2a2a2a;padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--mut);padding:14px 4px;font:inherit;font-size:13px}
+nav button.on{color:var(--gold);box-shadow:inset 0 2px var(--gold)}
+main{padding:18px 16px 96px;max-width:760px;margin:0 auto}
+.card{background:var(--c1);border:1px solid #262626;border-radius:14px;padding:14px;margin:10px 0}
+.card.click{cursor:pointer}.card.click:active{background:var(--c2)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.k{color:var(--mut);font-size:12.5px}.n{font-size:22px}.gold{color:var(--gold)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+button.b,dialog button{background:var(--gold);color:#0A0A0A;border:0;border-radius:10px;padding:11px 14px;font:inherit;font-weight:600;min-height:44px}
+button.g{background:none;border:1px solid #3a3a3a;color:var(--gr);border-radius:10px;padding:9px 12px;font:inherit;min-height:40px}
+button.s{padding:7px 10px;min-height:36px;font-size:13px}
+.bar{height:8px;background:#2a2a2a;border-radius:8px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--gold)}
+.tag{font-size:12px;border:1px solid #3a3a3a;border-radius:20px;padding:2px 9px;color:var(--mut)}
+.tag.v{color:var(--bad);border-color:var(--bad)}.tag.p{color:var(--ok);border-color:var(--ok)}
+dialog{background:var(--c1);color:var(--gr);border:1px solid #333;border-radius:16px;width:min(420px,92vw);padding:18px}
+dialog::backdrop{background:#000a}label{display:block;margin:10px 0;font-size:13px;color:var(--mut)}
+input{width:100%;margin-top:4px;background:var(--bg);color:#fff;border:1px solid #333;border-radius:10px;padding:11px;font:inherit}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;text-align:left;border-bottom:1px solid #2a2a2a}td:last-child,th:last-child{text-align:right}
+#st{position:fixed;inset:0;background:#fff;color:#0A0A0A;overflow:auto;padding:28px;z-index:9}
+#st h1,#st h3{color:#0A0A0A}#st th{border-bottom:2px solid var(--gold)}#st td{border-color:#ddd}
+@media(min-width:800px){nav{top:0;bottom:auto;width:200px;flex-direction:column;border-top:0;border-right:1px solid #2a2a2a;padding-top:30px}nav button{text-align:left;padding:14px 22px}nav button.on{box-shadow:inset 3px 0 var(--gold)}main{margin-left:220px;padding-bottom:40px}}
+@media print{body>*:not(#st){display:none!important}#st{position:static}.np{display:none}}
+</style></head><body>
+<nav id="nav"></nav><main id="m"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script>
+const SUPA_URL='https://kewnrbjkjkxomvrszbkc.supabase.co',SUPA_KEY='sb_publishable_eeMAOxUqH_5ax6H_oRpy8A_huQitpwE';
+const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
+const TODAY=new Date().toISOString().slice(0,10),$nav=document.getElementById('nav'),$m=document.getElementById('m'),g=i=>document.getElementById(i);
+let db=null,me=null,S={tab:'home',kind:null,pid:null,fid:null,arch:false};
+const dir={cobrar:'receivable',pagar:'payable'},role={cobrar:'client',pagar:'creditor'};
+const c100=x=>Math.round(Number(x)*100);
+const fmt=c=>(c/100).toLocaleString('es',{style:'currency',currency:'USD'});
+const cents=v=>Math.round(parseFloat(String(v).replace(',','.'))*100);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const paid=a=>a.filter(p=>!p.void).reduce((s,p)=>s+p.amt,0);
+const st=(bal,amt,due)=>bal<=0?'Pagada':due&&due<TODAY?'Vencida':bal<amt?'Abonada parcialmente':'Pendiente';
+const cls=s=>s=='Vencida'?'v':s=='Pagada'?'p':'';
+const L={cobrar:{p:'cliente',P:'Clientes',o:'cuenta por cobrar',pay:'Registrar abono'},pagar:{p:'acreedor',P:'Acreedores',o:'obligación',pay:'Registrar pago'}};
+const q=async p=>{const r=await p;return r.error?r.error.message:null};
+const now=()=>new Date().toISOString();
+const chk=(c,bal)=>!(c>0)?'Importe inválido.':c>bal?'El importe supera el saldo pendiente ('+fmt(bal)+').':null;
+async function load(){
+ const t=['parties','obligations','payments','financings','installments','installment_payments'];
+ const r=await Promise.all(t.map(x=>sb.from(x).select('*')));const bad=r.find(x=>x.error);if(bad){alert('No se pudo cargar: '+bad.error.message);return false}
+ const [pa,ob,py,fi,qu,qp]=r.map(x=>x.data);
+ const mk=k=>{const ps=pa.filter(p=>p.role==role[k]),ids=new Set(ps.map(p=>p.id));
+  const obs=ob.filter(o=>ids.has(o.party_id)&&o.direction==dir[k]).map(o=>({id:o.id,pid:o.party_id,concept:o.concept,ref:o.reference||'',issue:o.issue_date,due:o.due_date||'',amt:c100(o.amount),void:!!o.voided_at}));
+  const oi=new Set(obs.map(o=>o.id));
+  const pays=py.filter(x=>oi.has(x.obligation_id)).sort((a,b)=>a.paid_on<b.paid_on?-1:1).map(x=>({id:x.id,oid:x.obligation_id,date:x.paid_on,amt:c100(x.amount),method:x.method||'',ref:x.reference||'',void:!!x.voided_at}));
+  return{parties:ps.map(p=>({id:p.id,name:p.name,phone:p.phone||'',archived:!!p.archived_at})),obs,pays}};
+ db={cobrar:mk('cobrar'),pagar:mk('pagar'),fin:fi.map(f=>({id:f.id,entity:f.lender,concept:f.concept,initial:c100(f.down_payment),
+  quotas:qu.filter(x=>x.financing_id==f.id).sort((a,b)=>a.number-b.number).map(x=>({id:x.id,n:x.number,amt:c100(x.amount),due:x.due_date||'',
+   pays:qp.filter(y=>y.installment_id==x.id).map(y=>({id:y.id,date:y.paid_on||'',amt:c100(y.amount),method:y.method||'',ref:y.reference||'',hist:y.is_historical,void:!!y.voided_at}))}))}))};
+ return true}
+async function seedFin(){const {data:f,error}=await sb.from('financings').insert({lender:'Rapicredit',concept:'Compra de motocicleta',down_payment:940,usual_day:27}).select().single();if(error)return alert(error.message);
+ const {data:qs,error:e2}=await sb.from('installments').insert(Array.from({length:15},(_,i)=>({financing_id:f.id,number:i+1,amount:200}))).select();if(e2)return alert(e2.message);
+ const e3=await q(sb.from('installment_payments').insert(qs.filter(x=>x.number<=6).map(x=>({installment_id:x.id,amount:200,method:'Histórico',is_historical:true}))));if(e3)alert(e3)}
+function ob(k,o){const ps=db[k].pays.filter(p=>p.oid==o.id),pd=paid(ps),bal=o.amt-pd;return{...o,ps,pd,bal:o.void?0:bal,s:o.void?'Anulada':st(bal,o.amt,o.due)}}
+function party(k,p){const os=db[k].obs.filter(o=>o.pid==p.id).map(o=>ob(k,o)),v=os.filter(o=>!o.void),t=v.reduce((a,o)=>a+o.amt,0),pd=v.reduce((a,o)=>a+o.pd,0);return{...p,os,t,pd,bal:t-pd}}
+function fin(f){const qq=f.quotas.map(x=>{const pd=paid(x.pays);return{...x,pd,bal:x.amt-pd,s:st(x.amt-pd,x.amt,x.due)}});const t=qq.reduce((a,x)=>a+x.amt,0),pd=qq.reduce((a,x)=>a+x.pd,0);
+ return{...f,q:qq,t,pd,bal:t-pd,pct:t?Math.round(pd*100/t):0,done:qq.filter(x=>x.bal<=0).length}}
+function form(title,fields,cb){const d=document.createElement('dialog');
+ d.innerHTML=`<form><h3>${title}</h3>${fields.map(f=>`<label>${f[1]}<input name="${f[0]}" type="${f[2]||'text'}" ${f[3]||''} value="${esc(f[4]||'')}"></label>`).join('')}<p class="bad" id="er"></p><div class="row"><button type="button" class="g">Cancelar</button><button>Guardar</button></div></form>`;
+ document.body.append(d);d.showModal();d.querySelector('.g').onclick=()=>d.remove();
+ d.querySelector('form').onsubmit=async e=>{e.preventDefault();const b=e.submitter;if(b.disabled)return;b.disabled=true;let err;
+  try{err=await cb(Object.fromEntries(new FormData(e.target)))}catch(x){err=x.message}
+  if(err){d.querySelector('#er').textContent=err;b.disabled=false}else{d.remove();await load();render()}}}
+const imp=['amt','Importe (USD)','number','step="0.01" min="0.01" required inputmode="decimal"'],payF=['date','Fecha','date','required',TODAY],mF=['method','Método (transferencia, efectivo, Zelle…)'],rF=['ref','Referencia'];
+const nav=[['home','Resumen'],['cobrar','Por cobrar'],['pagar','Por pagar'],['fin','Créditos']];
+function go(t,k,p){S={tab:t,kind:(t=='cobrar'||t=='pagar')?t:null,pid:p||null,fid:t=='fin'?k||null:null,arch:false};render();scrollTo(0,0)}
+function render(){if(!me||!db)return;$nav.innerHTML=nav.map(n=>`<button class="${S.tab==n[0]?'on':''}" onclick="go('${n[0]}')">${n[1]}</button>`).join('');
+ $m.innerHTML=S.tab=='home'?home():S.tab=='fin'?(S.fid?finView(S.fid):finList()):(S.pid?partyView():list())}
+function home(){const sum=k=>db[k].parties.filter(p=>!p.archived).map(p=>party(k,p)).reduce((a,p)=>a+p.bal,0);
+ const mo=TODAY.slice(0,7),inM=a=>a.filter(p=>!p.void&&(p.date||'').startsWith(mo)).reduce((s,p)=>s+p.amt,0);
+ const fs=db.fin.map(fin),fb=fs.reduce((a,f)=>a+f.bal,0),fm=db.fin.reduce((a,f)=>a+f.quotas.reduce((s,x)=>s+inM(x.pays),0),0);
+ const cx=sum('cobrar'),cp=sum('pagar');
+ const venc=['cobrar','pagar'].flatMap(k=>db[k].obs.map(o=>ob(k,o)).filter(o=>o.s=='Vencida'));
+ const empty=!db.cobrar.obs.length&&!db.pagar.obs.length;
+ return`<h1>Ábaco Finance</h1><p class="k">Sincronizado en la nube · ${esc(me.email)}</p>
+<div class="grid"><div class="card"><div class="k">Pendiente por cobrar</div><div class="n gold">${fmt(cx)}</div></div><div class="card"><div class="k">Pendiente por pagar</div><div class="n">${fmt(cp)}</div></div>
+<div class="card"><div class="k">Cobros recibidos este mes</div><div class="n ok">${fmt(inM(db.cobrar.pays))}</div></div><div class="card"><div class="k">Pagos realizados este mes</div><div class="n">${fmt(inM(db.pagar.pays)+fm)}</div></div></div>
+<div class="card"><div class="k">Balance operativo (cobrar − pagar)</div><div class="n">${fmt(cx-cp)}</div></div>
+<div class="card click" onclick="go('fin')"><div class="k">Saldo pendiente de financiamientos (aparte)</div><div class="n">${fmt(fb)}</div></div>
+<div class="card"><h3>Vencidas (${venc.length})</h3>${venc.map(o=>`<div class="row k"><span>${esc(o.concept)}</span><span class="bad">${fmt(o.bal)}</span></div>`).join('')||'<p class="k">Sin cuentas vencidas.</p>'}</div>
+${empty?'<div class="card"><p>Aún no registras cuentas. Empieza creando tu primer cliente o acreedor.</p><div class="acts"><button class="b" onclick="go(\'cobrar\');newParty(\'cobrar\')">Nuevo cliente</button><button class="g" onclick="go(\'pagar\');newParty(\'pagar\')">Nuevo acreedor</button></div></div>':''}
+<div class="acts"><button class="g s" onclick="backup()">Descargar respaldo (JSON)</button><button class="g s" onclick="logout()">Cerrar sesión</button></div>`}
+function backup(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,1)],{type:'application/json'}));a.download='abaco-finance-respaldo-'+TODAY+'.json';a.click()}
+function list(){const k=S.kind,l=L[k];const ps=db[k].parties.filter(p=>p.archived==S.arch).map(p=>party(k,p)).sort((a,b)=>b.bal-a.bal);
+ return`<div class="row"><h1>${k=='cobrar'?'Por cobrar':'Por pagar'}</h1><button class="b" onclick="newParty('${k}')">Nuevo ${l.p}</button></div><div class="acts"><button class="g s" onclick="S.arch=!S.arch;render()">${S.arch?'Ver activos':'Ver archivados'}</button></div>
+${ps.map(p=>`<div class="card click" onclick="go('${k}',null,'${p.id}')"><div class="row"><b>${esc(p.name)}</b><span class="n ${p.bal>0?'gold':'ok'}">${fmt(p.bal)}</span></div><div class="k">${p.os.length} obligaciones · original ${fmt(p.t)} · ${k=='cobrar'?'abonado':'pagado'} ${fmt(p.pd)}</div></div>`).join('')||`<div class="card k">${S.arch?'Sin archivados.':'Sin '+l.P.toLowerCase()+' todavía. Pulsa «Nuevo '+l.p+'».'}</div>`}`}
+function newParty(k){form('Nuevo '+L[k].p,[['name','Nombre o razón social','text','required'],['phone','Teléfono (opcional)','tel'],['notes','Observaciones']],o=>{if(!o.name.trim())return'El nombre es obligatorio.';return q(sb.from('parties').insert({role:role[k],name:o.name.trim(),phone:o.phone||null,notes:o.notes||null}))})}
+function partyView(){const k=S.kind,l=L[k],p=party(k,db[k].parties.find(x=>x.id==S.pid));
+ return`<button class="g s" onclick="go('${k}')">‹ Volver</button><h1 style="margin-top:10px">${esc(p.name)}${p.archived?' (archivado)':''}</h1><div class="k">${esc(p.phone||'')}</div>
+<div class="grid"><div class="card"><div class="k">Original</div><div class="n">${fmt(p.t)}</div></div><div class="card"><div class="k">${k=='cobrar'?'Abonado':'Pagado'}</div><div class="n">${fmt(p.pd)}</div></div></div>
+<div class="card"><div class="k">Saldo pendiente</div><div class="n gold">${fmt(p.bal)}</div></div>
+<div class="acts"><button class="b" onclick="newOb('${k}')">Nueva ${l.o}</button><button class="g" onclick="stmt('${k}')">Generar estado de cuenta</button>${p.archived?`<button class="g" onclick="restoreParty('${k}')">Restaurar</button>`:`<button class="g" onclick="delParty('${k}')">Eliminar ${l.p}</button>`}</div>
+${p.os.map(o=>`<div class="card"><div class="row"><b style="${o.void?'text-decoration:line-through;opacity:.5':''}">${esc(o.concept)}</b><span class="tag ${cls(o.s)}">${o.s}</span></div>
+<div class="k">${esc(o.ref||'')} Emisión ${o.issue||'—'} · Vence ${o.due||'—'}</div><div class="row"><span class="k">${fmt(o.amt)} − ${fmt(o.pd)}</span><span class="n">${fmt(o.bal)}</span></div>
+<div class="acts">${o.bal>0?`<button class="b s" onclick="pay('${k}','${o.id}')">${l.pay}</button>`:''}${o.void?'':`<button class="g s" onclick="editOb('${k}','${o.id}')">Editar</button><button class="g s" onclick="voidOb('${k}','${o.id}')">Anular</button>`}<button class="g s" onclick="delOb('${k}','${o.id}')">Eliminar</button></div>
+${o.ps.length?`<table>${o.ps.map(x=>`<tr style="${x.void?'opacity:.4;text-decoration:line-through':''}"><td>${x.date}</td><td>${esc(x.method||'')} ${esc(x.ref||'')}</td><td>${fmt(x.amt)}</td><td>${x.void?'':`<button class="g s" onclick="editPay('${k}','${x.id}')">Editar</button> <button class="g s" onclick="voidPay('${k}','${x.id}')">Anular</button>`}</td></tr>`).join('')}</table>`:''}</div>`).join('')}`}
+function newOb(k){const pid=S.pid;form('Nueva '+L[k].o,[['concept','Concepto','text','required'],['ref','Factura o referencia (opcional)'],['issue','Fecha de emisión','date','required',TODAY],['due','Vencimiento (opcional)','date'],imp],
+ o=>{const c=cents(o.amt);if(!(c>0))return'El importe debe ser mayor que cero.';return q(sb.from('obligations').insert({party_id:pid,direction:dir[k],concept:o.concept.trim(),reference:o.ref||null,issue_date:o.issue,due_date:o.due||null,amount:c/100}))})}
+function pay(k,oid){const o=ob(k,db[k].obs.find(x=>x.id==oid));form(L[k].pay+' — '+esc(o.concept)+' (saldo '+fmt(o.bal)+')',[imp,payF,mF,rF],n=>{const c=cents(n.amt);return chk(c,o.bal)||q(sb.from('payments').insert({obligation_id:oid,paid_on:n.date,amount:c/100,method:n.method||null,reference:n.ref||null}))})}
+function voidPay(k,id){const x=db[k].pays.find(p=>p.id==id);form('¿Anular este movimiento de '+fmt(x.amt)+'? Quedará tachado en el historial y el saldo se recalcula.',[['why','Motivo (opcional)']],o=>q(sb.from('payments').update({voided_at:now(),void_reason:o.why.trim()||'Sin motivo indicado'}).eq('id',id)))}
+function editPay(k,id){const x=db[k].pays.find(p=>p.id==id),o=ob(k,db[k].obs.find(z=>z.id==x.oid)),max=o.bal+x.amt;
+ form('Editar movimiento (máximo '+fmt(max)+')',[['amt','Importe (USD)','number','step="0.01" min="0.01" required inputmode="decimal"',(x.amt/100).toFixed(2)],['date','Fecha','date','required',x.date],['method','Método','text','',x.method],['ref','Referencia','text','',x.ref]],async n=>{
+  const c=cents(n.amt),e0=chk(c,max);if(e0)return e0;
+  let e=await q(sb.from('payments').update({voided_at:now(),void_reason:'Corregido'}).eq('id',id));if(e)return e;
+  e=await q(sb.from('payments').insert({obligation_id:x.oid,paid_on:n.date,amount:c/100,method:n.method||null,reference:n.ref||null,replaces_id:id}));
+  if(e)await sb.from('payments').update({voided_at:null,void_reason:null}).eq('id',id);return e})}
+function editOb(k,oid){const raw=db[k].obs.find(x=>x.id==oid),o=ob(k,raw);form('Editar '+L[k].o,[['concept','Concepto','text','required',raw.concept],['ref','Factura o referencia (opcional)','text','',raw.ref],['issue','Fecha de emisión','date','required',raw.issue],['due','Vencimiento (opcional)','date','',raw.due],['amt','Importe (USD)','number','step="0.01" min="0.01" required inputmode="decimal"',(raw.amt/100).toFixed(2)]],n=>{
+ const c=cents(n.amt);if(!(c>0))return'El importe debe ser mayor que cero.';if(c<o.pd)return'El importe no puede ser menor a lo ya '+(k=='cobrar'?'abonado':'pagado')+' ('+fmt(o.pd)+').';
+ return q(sb.from('obligations').update({concept:n.concept.trim(),reference:n.ref||null,issue_date:n.issue,due_date:n.due||null,amount:c/100}).eq('id',oid))})}
+function voidOb(k,oid){const o=ob(k,db[k].obs.find(x=>x.id==oid));form('¿Anular "'+esc(o.concept)+'"? Quedará tachada y no sumará a los saldos.',[['why','Motivo (opcional)']],n=>{
+ if(o.pd>0)return'Tiene abonos válidos por '+fmt(o.pd)+'. Anúlalos primero.';return q(sb.from('obligations').update({voided_at:now(),void_reason:n.why.trim()||'Sin motivo indicado'}).eq('id',oid))})}
+function delOb(k,oid){const o=ob(k,db[k].obs.find(x=>x.id==oid));form('¿Eliminar "'+esc(o.concept)+'" por '+fmt(o.amt)+'? No se puede deshacer.',[],()=>{
+ if(o.ps.length)return'Tiene movimientos registrados, aunque estén anulados. Para no perder el historial, usa «Anular» en vez de eliminar.';return q(sb.from('obligations').delete().eq('id',oid))})}
+function delParty(k){const p=party(k,db[k].parties.find(x=>x.id==S.pid)),hasPay=p.os.some(o=>o.ps.length);
+ form('¿Eliminar a "'+esc(p.name)+'"?'+(hasPay?' Tiene movimientos: se ARCHIVARÁ (se oculta del listado pero se conserva y puedes restaurarlo).':' No tiene movimientos: se eliminará definitivamente.'),[],async()=>{
+  let e;if(hasPay)e=await q(sb.from('parties').update({archived_at:now()}).eq('id',p.id));
+  else{e=await q(sb.from('obligations').delete().eq('party_id',p.id));if(!e)e=await q(sb.from('parties').delete().eq('id',p.id))}
+  if(!e)S.pid=null;return e})}
+function restoreParty(k){return q(sb.from('parties').update({archived_at:null}).eq('id',S.pid)).then(async e=>{if(e)alert(e);await load();render()})}
+function stmt(k){const p=party(k,db[k].parties.find(x=>x.id==S.pid));const d=document.createElement('div');d.id='st';
+ d.innerHTML=`<div class="np acts"><button class="b" onclick="print()">Imprimir / guardar PDF</button><button class="g" onclick="this.closest('#st').remove()" style="color:#000">Cerrar</button></div>
+<h3 style="color:#C2A97F">Ábaco Finance</h3><h1>Estado de cuenta</h1><p>${esc(p.name)} · Emitido ${TODAY} · Saldo a la fecha de corte ${TODAY} · Todo el historial</p>
+<table><tr><th>Concepto</th><th>Original</th><th>${k=='cobrar'?'Abonado':'Pagado'}</th><th>Pendiente</th></tr>${p.os.filter(o=>!o.void).map(o=>`<tr><td>${esc(o.concept)} (${o.s})</td><td>${fmt(o.amt)}</td><td>${fmt(o.pd)}</td><td>${fmt(o.bal)}</td></tr>`).join('')}
+<tr><th>TOTAL</th><th>${fmt(p.t)}</th><th>${fmt(p.pd)}</th><th>${fmt(p.bal)}</th></tr></table>
+<h3 style="margin-top:18px">Movimientos</h3><table>${p.os.flatMap(o=>o.ps.filter(x=>!x.void).map(x=>`<tr><td>${x.date}</td><td>${esc(o.concept)} · ${esc(x.method||'')} ${esc(x.ref||'')}</td><td>${fmt(x.amt)}</td></tr>`)).join('')||'<tr><td>Sin movimientos</td></tr>'}</table>
+<h1 style="margin-top:22px;color:#C2A97F">${k=='cobrar'?'Pendiente de cobro':'Pendiente de pago'}: ${fmt(p.bal)}</h1>`;document.body.append(d)}
+function finList(){return`<h1>Financiamientos</h1>${db.fin.map(fin).map(f=>`<div class="card click" onclick="go('fin','${f.id}')"><div class="row"><b>${esc(f.entity)} · ${esc(f.concept)}</b><span class="n gold">${fmt(f.bal)}</span></div><div class="bar"><i style="width:${f.pct}%"></i></div><div class="k">${f.pct}% por importe · ${f.done}/${f.q.length} cuotas pagadas</div></div>`).join('')}`}
+function finView(id){const raw=db.fin.find(x=>x.id==id),f=fin(raw),init=raw.initial;
+ return`<button class="g s" onclick="go('fin')">‹ Volver</button><h1 style="margin-top:10px">${esc(f.entity)}</h1><div class="k">${esc(f.concept)}</div>
+<div class="grid"><div class="card"><div class="k">Inicial (aparte)</div><div class="n">${fmt(init)}</div></div><div class="card"><div class="k">Total cuotas</div><div class="n">${fmt(f.t)}</div></div>
+<div class="card"><div class="k">Pagado en cuotas</div><div class="n ok">${fmt(f.pd)}</div></div><div class="card"><div class="k">Saldo de cuotas</div><div class="n gold">${fmt(f.bal)}</div></div></div>
+<div class="card"><div class="bar"><i style="width:${f.pct}%"></i></div><div class="k">${f.pct}% por importe · ${f.done} de ${f.q.length} cuotas completas · Compra total ${fmt(init+f.t)} · Pagado con inicial ${fmt(init+f.pd)}</div></div>
+<div class="acts"><button class="g" onclick="setStart('${id}')">Definir primer vencimiento</button></div>
+${f.q.map(x=>`<div class="card"><div class="row"><b>Cuota ${String(x.n).padStart(2,'0')}/${f.q.length}</b><span class="tag ${cls(x.s)}">${x.s}</span></div><div class="row"><span class="k">${x.due?'Vence '+x.due:'Sin fecha'} · ${fmt(x.amt)}</span><span class="n">${fmt(x.bal)}</span></div>
+${x.bal>0?`<div class="acts"><button class="b s" onclick="payQ('${id}',${x.n})">Pagar cuota</button></div>`:''}</div>`).join('')}`}
+function payQ(id,n){const x=fin(db.fin.find(z=>z.id==id)).q[n-1];form('Cuota '+n+' (saldo '+fmt(x.bal)+')',[imp,payF,mF,rF],o=>{const c=cents(o.amt);return chk(c,x.bal)||q(sb.from('installment_payments').insert({installment_id:x.id,paid_on:o.date,amount:c/100,method:o.method||null,reference:o.ref||null}))})}
+function setStart(id){const f=db.fin.find(x=>x.id==id);form('Primer vencimiento (Rapicredit paga el 27)',[['d','Fecha de la primera cuota','date','required']],async o=>{const [y,m,dd]=o.d.split('-').map(Number);
+ const rs=await Promise.all(f.quotas.map((x,i)=>sb.from('installments').update({due_date:new Date(Date.UTC(y,m-1+i,dd)).toISOString().slice(0,10)}).eq('id',x.id)));const b=rs.find(r=>r.error);return b?b.error.message:null})}
+function loginView(msg){$nav.innerHTML='';$m.innerHTML=`<h1>Ábaco Finance</h1><p class="k">Inicia sesión para ver tus datos en cualquier dispositivo.</p><div class="card"><label>Correo<input id="em" type="email" autocomplete="email"></label><label>Contraseña (mínimo 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label><p class="bad" id="lm">${msg||''}</p><div class="acts"><button class="b" onclick="auth('in')">Entrar</button><button class="g" onclick="auth('up')">Crear cuenta</button></div></div>`}
+async function auth(m){const email=g('em').value.trim(),password=g('pw').value;g('lm').textContent='Un momento…';
+ const r=m=='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});
+ if(r.error){g('lm').textContent=r.error.message;return}
+ if(!r.data.session){g('lm').textContent='Revisa tu correo para confirmar la cuenta y luego pulsa Entrar.';return}
+ me=r.data.session.user;await start()}
+async function start(){$m.innerHTML='<p class="k">Cargando…</p>';if(await load()){if(!db.fin.length){await seedFin();await load()}render()}}
+async function logout(){await sb.auth.signOut();me=null;db=null;loginView()}
+sb.auth.getSession().then(({data})=>{if(data.session){me=data.session.user;start()}else loginView()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me)load().then(ok=>ok&&!document.querySelector('dialog[open]')&&render())});
+</script></body></html>
