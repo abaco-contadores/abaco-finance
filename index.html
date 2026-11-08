@@ -174,10 +174,10 @@ function payQ(qid){const {x}=qOf(qid),bal=x.amt-paid(x.pays);form('Cuota '+x.n+'
 function voidQP(pid){form('¿Anular este pago? Queda tachado en el historial y la cuota vuelve a tener saldo.',[['why','Motivo (opcional)']],o=>q(sb.from('installment_payments').update({voided_at:now(),void_reason:o.why.trim()||'Sin motivo indicado'}).eq('id',pid)))}
 function setStart(id){const f=db.fin.find(x=>x.id==id);form('Primer vencimiento (Rapicredit paga el 27)',[['d','Fecha de la primera cuota','date','required']],async o=>{
  const rs=await Promise.all(f.quotas.map((x,i)=>sb.from('installments').update({due_date:addM(o.d,i)}).eq('id',x.id)));const b=rs.find(r=>r.error);return b?b.error.message:null})}
-function loginView(msg){$nav.innerHTML='';$m.innerHTML=`<h1>Ábaco Finance</h1><p class="k">Inicia sesión para ver tus datos en cualquier dispositivo.</p><div class="card"><label>Correo<input id="em" type="email" autocomplete="email"></label><label>Contraseña (mínimo 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label><p class="bad" id="lm">${msg||''}</p><div class="acts"><button class="b" onclick="auth('in')">Entrar</button><button class="g" onclick="auth('up')">Crear cuenta</button></div></div>`}
+function loginView(msg){$nav.innerHTML='';$m.innerHTML=`<h1>Ábaco Finance</h1><p class="k">Inicia sesión para ver tus datos en cualquier dispositivo.</p><div class="card"><label>Correo<input id="em" type="email" autocomplete="email"></label><label>Contraseña (mínimo 6 caracteres)<input id="pw" type="password" autocomplete="current-password"></label><p class="bad" id="lm">${msg||''}</p><div class="acts"><button class="b" onclick="auth('in')">Entrar</button></div><p class="k">¿No tienes acceso? Solicítalo a Ábaco Contadores.</p></div>`}
 async function auth(m){const email=g('em').value.trim(),password=g('pw').value;g('lm').textContent='Un momento…';
  const r=m=='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});
- if(r.error){g('lm').textContent=r.error.message;return}
+ if(r.error){g('lm').textContent=(/signup|sign up|not allowed/i.test(r.error.message)?'Registro cerrado: pide tu acceso a Ábaco Contadores.':r.error.message);return}
  if(!r.data.session){g('lm').textContent='Revisa tu correo para confirmar la cuenta y luego pulsa Entrar.';return}
  me=r.data.session.user;await start()}
 async function start(){$m.innerHTML='<p class="k">Cargando…</p>';if(await load()){if(!db.fin.length){await seedFin();await load()}render()}}
